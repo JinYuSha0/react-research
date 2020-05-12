@@ -117,11 +117,11 @@ function render(element, container, callback) {
 }
 
 function legacyRenderSubtreeIntoContainer(
-  parentComponent: ?React$Component<any, any>,
-  children: ReactNodeList,
-  container: Container,
-  forceHydrate: boolean,
-  callback: ?Function
+  parentComponent,
+  children,
+  container,
+  forceHydrate,
+  callback
 ) {
   let root = container._reactRootContainer;
   let fiberRoot;
@@ -130,6 +130,11 @@ function legacyRenderSubtreeIntoContainer(
       container,
       forceHydrate
     );
+    fiberRoot = root._internalRoot;
+    
+    unbatchedUpdates(() => {
+      updateContainer(children, fiberRoot, parentComponent, callback);
+    });
   }
 }
 
@@ -152,11 +157,162 @@ function legacyCreateRootFromDOMContainer(container, forceHydrate) {
   );
 }
 
+const LegacyRoot = 0;
+const BlockingRoot = 1;
+const ConcurrentRoot = 2;
 function createLegacyRoot(container, options) {
-  const LegacyRoot = 0;
   return new ReactDOMBlockingRoot(container, LegacyRoot, options);
 }
 
 function ReactDOMBlockingRoot(container, tag, options) {
   this._internalRoot = createRootImpl(container, tag, options);
+}
+
+function createRootImpl(container, tag, options) {
+  const hydrate = options != null && options.hydrate === true;
+  const hydrationCallbacks =
+    (options != null && options.hydrationOptions) || null;
+  const root = createContainer(container, tag, hydrate, hydrationCallbacks);
+  markContainerAsRoot(root.current, container);
+  const containerNodeType = container.nodeType;
+
+  return root;
+}
+
+function createContainer(containerInfo, tag, hydrate, hydrationCallbacks) {
+  return createFiberRoot(containerInfo, tag, hydrate, hydrationCallbacks);
+}
+
+function createFiberRoot(containerInfo, tag, hydrate, hydrationCallbacks) {
+  const root = new FiberRootNode(containerInfo, tag, hydrate);
+  // if (enableSuspenseCallback) {
+  //   root.hydrationCallbacks = hydrationCallbacks;
+  // }
+  const uninitializedFiber = createHostRootFiber(tag);
+  root.current = uninitializedFiber;
+  uninitializedFiber.stateNode = root;
+
+  initializeUpdateQueue(uninitializedFiber);
+
+  return root;
+}
+
+const NoLanes = 0b0000000000000000000000000000000;
+const noTimeout = 0;
+let threadIDCounter = 0;
+function unstable_getThreadID() {
+  return ++threadIDCounter;
+}
+function FiberRootNode(containerInfo, tag, hydrate) {
+  this.tag = tag;
+  this.containerInfo = containerInfo;
+  this.pendingChildren = null;
+  this.current = null;
+  this.pingCache = null;
+  this.finishedWork = null;
+  this.timeoutHandle = noTimeout;
+  this.context = null;
+  this.pendingContext = null;
+  this.hydrate = hydrate;
+  this.callbackNode = null;
+  this.callbackId = NoLanes;
+  this.callbackIsSync = false;
+  this.expiresAt = -1;
+
+  this.pendingLanes = NoLanes;
+  this.suspendedLanes = NoLanes;
+  this.pingedLanes = NoLanes;
+  this.expiredLanes = NoLanes;
+  this.mutableReadLanes = NoLanes;
+
+  this.finishedLanes = NoLanes;
+
+  if (enableSchedulerTracing) {
+    this.interactionThreadID = unstable_getThreadID();
+    this.memoizedInteractions = new Set();
+    this.pendingInteractionMap_new = new Map();
+  }
+  if (enableSuspenseCallback) {
+    this.hydrationCallbacks = null;
+  }
+}
+
+const NoMode = 0b00000;
+const StrictMode = 0b00001;
+const BlockingMode = 0b00010;
+const ConcurrentMode = 0b00100;
+const ProfileMode = 0b01000;
+const DebugTracingMode = 0b10000;
+const HostRoot = 3;
+function createHostRootFiber(tag) {
+  let mode;
+  if (tag === ConcurrentRoot) {
+    mode = ConcurrentMode | BlockingMode | StrictMode;
+  } else if (tag === BlockingRoot) {
+    mode = BlockingMode | StrictMode;
+  } else {
+    mode = NoMode;
+  }
+
+  return createFiber(HostRoot, null, null, mode);
+}
+
+const createFiber = function (tag, pendingProps, key, mode) {
+  return new FiberNode(tag, pendingProps, key, mode);
+};
+
+function FiberNode(tag, pendingProps, key, mode) {
+  // Instance
+  this.tag = tag;
+  this.key = key;
+  this.elementType = null;
+  this.type = null;
+  this.stateNode = null;
+
+  // Fiber
+  this.return = null;
+  this.child = null;
+  this.sibling = null;
+  this.index = 0;
+
+  this.ref = null;
+
+  this.pendingProps = pendingProps;
+  this.memoizedProps = null;
+  this.updateQueue = null;
+  this.memoizedState = null;
+  this.dependencies_new = null;
+
+  this.mode = mode;
+
+  // Effects
+  this.effectTag = NoEffect;
+  this.nextEffect = null;
+
+  this.firstEffect = null;
+  this.lastEffect = null;
+
+  this.lanes = NoLanes;
+  this.childLanes = NoLanes;
+
+  this.alternate = null;
+}
+
+function initializeUpdateQueue(fiber) {
+  const queue = {
+    baseState: fiber.memoizedState,
+    firstBaseUpdate: null,
+    lastBaseUpdate: null,
+    shared: {
+      pending: null,
+    },
+    effects: null,
+  };
+  fiber.updateQueue = quue;
+}
+
+const randomKey = Math.random().toString(36).slice(2);
+const internalContainerInstanceKey = "__reactContainer$" + randomKey;
+function markContainerAsRoot(hostRoot, node) {
+  node[internalContainerInstanceKey] = hostRoot;
 }
