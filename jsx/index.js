@@ -104,7 +104,65 @@ function ReactElement(type, key, ref, self, source, owner, props) {
 const element = Main();
 
 // render
+const LegacyRoot = 0;
+const BlockingRoot = 1;
+const ConcurrentRoot = 2;
+
+const NoLanes = 0b0000000000000000000000000000000;
+const noTimeout = 0;
+
+let threadIDCounter = 0;
+
+const NoEffect = 0b00000000000000;
+
+const NoMode = 0b00000;
+const StrictMode = 0b00001;
+const BlockingMode = 0b00010;
+const ConcurrentMode = 0b00100;
+const ProfileMode = 0b01000;
+const DebugTracingMode = 0b10000;
+const HostRoot = 3;
+
+const randomKey = Math.random().toString(36).slice(2);
+const internalContainerInstanceKey = "__reactContainer$" + randomKey;
+
+const NoContext = 0b000000;
+const BatchedContext = 0b000001;
+const EventContext = 0b000010;
+const DiscreteEventContext = 0b000100;
+const LegacyUnbatchedContext = 0b001000;
+const RenderContext = 0b010000;
+const CommitContext = 0b100000;
+
+let executionContext = NoContext;
+
+let Scheduler_now;
+if (typeof performance === "object" && typeof performance.now === "function") {
+  Scheduler_now = () => performance.now();
+} else {
+  const initialTime = Date.now();
+  Scheduler_now = () => Date.now() - initialTime;
+}
+
+let currentEventTime = -1;
+const initialTimeMs = Scheduler_now();
+const now =
+  initialTimeMs < 10000 ? Scheduler_now : () => Scheduler_now() - initialTimeMs;
+
+let syncQueue = null;
+let immediateQueueCallbackNode = null;
+let isFlushingSyncQueue = false;
+
+const ImmediatePriority = 99;
+const UserBlockingPriority = 98;
+const NormalPriority = 97;
+const LowPriority = 96;
+const IdlePriority = 95;
+// NoPriority is the absence of priority. Also React-only.
+const NoPriority = 90;
+
 console.log(element);
+render(element, document.querySelector("#body"));
 
 function render(element, container, callback) {
   return legacyRenderSubtreeIntoContainer(
@@ -131,7 +189,7 @@ function legacyRenderSubtreeIntoContainer(
       forceHydrate
     );
     fiberRoot = root._internalRoot;
-    
+
     unbatchedUpdates(() => {
       updateContainer(children, fiberRoot, parentComponent, callback);
     });
@@ -157,9 +215,6 @@ function legacyCreateRootFromDOMContainer(container, forceHydrate) {
   );
 }
 
-const LegacyRoot = 0;
-const BlockingRoot = 1;
-const ConcurrentRoot = 2;
 function createLegacyRoot(container, options) {
   return new ReactDOMBlockingRoot(container, LegacyRoot, options);
 }
@@ -197,12 +252,10 @@ function createFiberRoot(containerInfo, tag, hydrate, hydrationCallbacks) {
   return root;
 }
 
-const NoLanes = 0b0000000000000000000000000000000;
-const noTimeout = 0;
-let threadIDCounter = 0;
 function unstable_getThreadID() {
   return ++threadIDCounter;
 }
+
 function FiberRootNode(containerInfo, tag, hydrate) {
   this.tag = tag;
   this.containerInfo = containerInfo;
@@ -227,23 +280,16 @@ function FiberRootNode(containerInfo, tag, hydrate) {
 
   this.finishedLanes = NoLanes;
 
-  if (enableSchedulerTracing) {
-    this.interactionThreadID = unstable_getThreadID();
-    this.memoizedInteractions = new Set();
-    this.pendingInteractionMap_new = new Map();
-  }
-  if (enableSuspenseCallback) {
-    this.hydrationCallbacks = null;
-  }
+  // if (enableSchedulerTracing) {
+  //   this.interactionThreadID = unstable_getThreadID();
+  //   this.memoizedInteractions = new Set();
+  //   this.pendingInteractionMap_new = new Map();
+  // }
+  // if (enableSuspenseCallback) {
+  //   this.hydrationCallbacks = null;
+  // }
 }
 
-const NoMode = 0b00000;
-const StrictMode = 0b00001;
-const BlockingMode = 0b00010;
-const ConcurrentMode = 0b00100;
-const ProfileMode = 0b01000;
-const DebugTracingMode = 0b10000;
-const HostRoot = 3;
 function createHostRootFiber(tag) {
   let mode;
   if (tag === ConcurrentRoot) {
@@ -257,9 +303,9 @@ function createHostRootFiber(tag) {
   return createFiber(HostRoot, null, null, mode);
 }
 
-const createFiber = function (tag, pendingProps, key, mode) {
+function createFiber(tag, pendingProps, key, mode) {
   return new FiberNode(tag, pendingProps, key, mode);
-};
+}
 
 function FiberNode(tag, pendingProps, key, mode) {
   // Instance
@@ -308,11 +354,85 @@ function initializeUpdateQueue(fiber) {
     },
     effects: null,
   };
-  fiber.updateQueue = quue;
+  fiber.updateQueue = queue;
 }
 
-const randomKey = Math.random().toString(36).slice(2);
-const internalContainerInstanceKey = "__reactContainer$" + randomKey;
 function markContainerAsRoot(hostRoot, node) {
   node[internalContainerInstanceKey] = hostRoot;
+}
+
+function unbatchedUpdates(fn, a) {
+  const preExecutionContext = executionContext;
+  executionContext &= ~BatchedContext;
+  executionContext |= LegacyUnbatchedContext;
+  try {
+    return fn(a);
+  } finally {
+    executionContext = preExecutionContext;
+    if (executionContext === NoContext) {
+      // Flush the immediate callbacks that were scheduled during this batch
+      flushSyncCallbackQueue();
+    }
+  }
+}
+
+function updateContainer(element, container, parentComponent, callback) {
+  const current = container.current;
+  const eventTime = requestEventTime();
+
+  console.log(eventTime);
+}
+
+function requestEventTime() {
+  if ((executionContext & (RenderContext | CommitContext)) !== NoContext) {
+    return now();
+  }
+  if (currentEventTime !== -1) {
+    return currentEventTime;
+  }
+  currentEventTime = now();
+  return currentEventTime;
+}
+
+function flushSyncCallbackQueue() {
+  if (immediateQueueCallbackNode !== null) {
+    const node = immediateQueueCallbackNode;
+    immediateQueueCallbackNode = null;
+    Scheduler_cancelCallback(node);
+  }
+  flushSyncCallbackQueueImpl();
+}
+
+function flushSyncCallbackQueueImpl() {
+  if (!isFlushingSyncQueue && syncQueue !== null) {
+    // Prevent re-entrancy.
+    isFlushingSyncQueue = true;
+    let i = 0;
+    try {
+      const isSync = true;
+      const queue = syncQueue;
+      runWithPriority(ImmediatePriority, () => {
+        for (; i < queue.length; i++) {
+          let callback = queue[i];
+          do {
+            callback = callback(isSync);
+          } while (callback !== null);
+        }
+      });
+      syncQueue = null;
+    } catch (error) {
+      // If something throws, leave the remaining callbacks on the queue.
+      if (syncQueue !== null) {
+        syncQueue = syncQueue.slice(i + 1);
+      }
+      // Resume flushing in the next tick
+      Scheduler_scheduleCallback(
+        Scheduler_ImmediatePriority,
+        flushSyncCallbackQueue
+      );
+      throw error;
+    } finally {
+      isFlushingSyncQueue = false;
+    }
+  }
 }
