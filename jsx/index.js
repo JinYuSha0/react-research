@@ -1,12 +1,64 @@
-// jsx
+const __DEV__ = false;
 
-function Main() {
-  return createElement(
-    "div",
-    { className: "wrapper", ref: "main", key: "main" },
-    createElement("h1", null, "Hello World"),
-    createElement("h2", null, "ReactChild")
-  );
+let REACT_ELEMENT_TYPE = 0xeac7;
+let REACT_PORTAL_TYPE = 0xeaca;
+let REACT_FRAGMENT_TYPE = 0xeacb;
+let REACT_STRICT_MODE_TYPE = 0xeacc;
+let REACT_PROFILER_TYPE = 0xead2;
+let REACT_PROVIDER_TYPE = 0xeacd;
+let REACT_CONTEXT_TYPE = 0xeace;
+let REACT_FORWARD_REF_TYPE = 0xead0;
+let REACT_SUSPENSE_TYPE = 0xead1;
+let REACT_SUSPENSE_LIST_TYPE = 0xead8;
+let REACT_MEMO_TYPE = 0xead3;
+let REACT_LAZY_TYPE = 0xead4;
+let REACT_BLOCK_TYPE = 0xead9;
+let REACT_SERVER_BLOCK_TYPE = 0xeada;
+let REACT_FUNDAMENTAL_TYPE = 0xead5;
+let REACT_RESPONDER_TYPE = 0xead6;
+let REACT_SCOPE_TYPE = 0xead7;
+let REACT_OPAQUE_ID_TYPE = 0xeae0;
+let REACT_DEBUG_TRACING_MODE_TYPE = 0xeae1;
+let REACT_OFFSCREEN_TYPE = 0xeae2;
+let REACT_LEGACY_HIDDEN_TYPE = 0xeae3;
+
+class Main extends Component {
+  wrapper = null;
+
+  state = {
+    text: "Hello World",
+  };
+
+  static getDerivedStateFromProps(nextProps, prevState) {
+    // console.log("prevState ->", prevState);
+  }
+
+  componentDidMount() {
+    // setTimeout(() => {
+    //   this.setState({ text: "setState" });
+    // }, 1000);
+    console.log("did mount", this.wrapper, this.updater);
+  }
+
+  render() {
+    return createElement(
+      "div",
+      { className: "wrapper", ref: (ref) => (this.wrapper = ref), key: "main" },
+      createElement("h1", null, this.state.text),
+      createElement("h2", null, "ReactChild"),
+      createElement(H3)
+    );
+  }
+}
+
+class H3 extends Component {
+  componentDidMount() {
+    console.log("h3 did mount");
+  }
+
+  render() {
+    return createElement("h3", null, "h3");
+  }
 }
 
 const hasOwnProperty = Object.prototype.hasOwnProperty;
@@ -84,8 +136,6 @@ function createElement(type, config, children) {
   );
 }
 
-const REACT_ELEMENT_TYPE = Symbol.for("react.element");
-
 function ReactElement(type, key, ref, self, source, owner, props) {
   const element = {
     $$typeof: REACT_ELEMENT_TYPE,
@@ -101,338 +151,6 @@ function ReactElement(type, key, ref, self, source, owner, props) {
   return element;
 }
 
-const element = Main();
+const element = createElement(Main, null);
 
-// render
-const LegacyRoot = 0;
-const BlockingRoot = 1;
-const ConcurrentRoot = 2;
-
-const NoLanes = 0b0000000000000000000000000000000;
-const noTimeout = 0;
-
-let threadIDCounter = 0;
-
-const NoEffect = 0b00000000000000;
-
-const NoMode = 0b00000;
-const StrictMode = 0b00001;
-const BlockingMode = 0b00010;
-const ConcurrentMode = 0b00100;
-const ProfileMode = 0b01000;
-const DebugTracingMode = 0b10000;
-const HostRoot = 3;
-
-const randomKey = Math.random().toString(36).slice(2);
-const internalContainerInstanceKey = "__reactContainer$" + randomKey;
-
-const NoContext = 0b000000;
-const BatchedContext = 0b000001;
-const EventContext = 0b000010;
-const DiscreteEventContext = 0b000100;
-const LegacyUnbatchedContext = 0b001000;
-const RenderContext = 0b010000;
-const CommitContext = 0b100000;
-
-let executionContext = NoContext;
-
-let Scheduler_now;
-if (typeof performance === "object" && typeof performance.now === "function") {
-  Scheduler_now = () => performance.now();
-} else {
-  const initialTime = Date.now();
-  Scheduler_now = () => Date.now() - initialTime;
-}
-
-let currentEventTime = -1;
-const initialTimeMs = Scheduler_now();
-const now =
-  initialTimeMs < 10000 ? Scheduler_now : () => Scheduler_now() - initialTimeMs;
-
-let syncQueue = null;
-let immediateQueueCallbackNode = null;
-let isFlushingSyncQueue = false;
-
-const ImmediatePriority = 99;
-const UserBlockingPriority = 98;
-const NormalPriority = 97;
-const LowPriority = 96;
-const IdlePriority = 95;
-// NoPriority is the absence of priority. Also React-only.
-const NoPriority = 90;
-
-console.log(element);
 render(element, document.querySelector("#body"));
-
-function render(element, container, callback) {
-  return legacyRenderSubtreeIntoContainer(
-    null,
-    element,
-    container,
-    false,
-    callback
-  );
-}
-
-function legacyRenderSubtreeIntoContainer(
-  parentComponent,
-  children,
-  container,
-  forceHydrate,
-  callback
-) {
-  let root = container._reactRootContainer;
-  let fiberRoot;
-  if (!root) {
-    root = container._reactRootContainer = legacyCreateRootFromDOMContainer(
-      container,
-      forceHydrate
-    );
-    fiberRoot = root._internalRoot;
-
-    unbatchedUpdates(() => {
-      updateContainer(children, fiberRoot, parentComponent, callback);
-    });
-  }
-}
-
-function legacyCreateRootFromDOMContainer(container, forceHydrate) {
-  const shouldHydrate = forceHydrate;
-
-  if (!shouldHydrate) {
-    let rootSibling;
-    while ((rootSibling = container.lastChild)) {
-      container.removeChild(rootSibling);
-    }
-  }
-  return createLegacyRoot(
-    container,
-    shouldHydrate
-      ? {
-          hydrate: true,
-        }
-      : undefined
-  );
-}
-
-function createLegacyRoot(container, options) {
-  return new ReactDOMBlockingRoot(container, LegacyRoot, options);
-}
-
-function ReactDOMBlockingRoot(container, tag, options) {
-  this._internalRoot = createRootImpl(container, tag, options);
-}
-
-function createRootImpl(container, tag, options) {
-  const hydrate = options != null && options.hydrate === true;
-  const hydrationCallbacks =
-    (options != null && options.hydrationOptions) || null;
-  const root = createContainer(container, tag, hydrate, hydrationCallbacks);
-  markContainerAsRoot(root.current, container);
-  const containerNodeType = container.nodeType;
-
-  return root;
-}
-
-function createContainer(containerInfo, tag, hydrate, hydrationCallbacks) {
-  return createFiberRoot(containerInfo, tag, hydrate, hydrationCallbacks);
-}
-
-function createFiberRoot(containerInfo, tag, hydrate, hydrationCallbacks) {
-  const root = new FiberRootNode(containerInfo, tag, hydrate);
-  // if (enableSuspenseCallback) {
-  //   root.hydrationCallbacks = hydrationCallbacks;
-  // }
-  const uninitializedFiber = createHostRootFiber(tag);
-  root.current = uninitializedFiber;
-  uninitializedFiber.stateNode = root;
-
-  initializeUpdateQueue(uninitializedFiber);
-
-  return root;
-}
-
-function unstable_getThreadID() {
-  return ++threadIDCounter;
-}
-
-function FiberRootNode(containerInfo, tag, hydrate) {
-  this.tag = tag;
-  this.containerInfo = containerInfo;
-  this.pendingChildren = null;
-  this.current = null;
-  this.pingCache = null;
-  this.finishedWork = null;
-  this.timeoutHandle = noTimeout;
-  this.context = null;
-  this.pendingContext = null;
-  this.hydrate = hydrate;
-  this.callbackNode = null;
-  this.callbackId = NoLanes;
-  this.callbackIsSync = false;
-  this.expiresAt = -1;
-
-  this.pendingLanes = NoLanes;
-  this.suspendedLanes = NoLanes;
-  this.pingedLanes = NoLanes;
-  this.expiredLanes = NoLanes;
-  this.mutableReadLanes = NoLanes;
-
-  this.finishedLanes = NoLanes;
-
-  // if (enableSchedulerTracing) {
-  //   this.interactionThreadID = unstable_getThreadID();
-  //   this.memoizedInteractions = new Set();
-  //   this.pendingInteractionMap_new = new Map();
-  // }
-  // if (enableSuspenseCallback) {
-  //   this.hydrationCallbacks = null;
-  // }
-}
-
-function createHostRootFiber(tag) {
-  let mode;
-  if (tag === ConcurrentRoot) {
-    mode = ConcurrentMode | BlockingMode | StrictMode;
-  } else if (tag === BlockingRoot) {
-    mode = BlockingMode | StrictMode;
-  } else {
-    mode = NoMode;
-  }
-
-  return createFiber(HostRoot, null, null, mode);
-}
-
-function createFiber(tag, pendingProps, key, mode) {
-  return new FiberNode(tag, pendingProps, key, mode);
-}
-
-function FiberNode(tag, pendingProps, key, mode) {
-  // Instance
-  this.tag = tag;
-  this.key = key;
-  this.elementType = null;
-  this.type = null;
-  this.stateNode = null;
-
-  // Fiber
-  this.return = null;
-  this.child = null;
-  this.sibling = null;
-  this.index = 0;
-
-  this.ref = null;
-
-  this.pendingProps = pendingProps;
-  this.memoizedProps = null;
-  this.updateQueue = null;
-  this.memoizedState = null;
-  this.dependencies_new = null;
-
-  this.mode = mode;
-
-  // Effects
-  this.effectTag = NoEffect;
-  this.nextEffect = null;
-
-  this.firstEffect = null;
-  this.lastEffect = null;
-
-  this.lanes = NoLanes;
-  this.childLanes = NoLanes;
-
-  this.alternate = null;
-}
-
-function initializeUpdateQueue(fiber) {
-  const queue = {
-    baseState: fiber.memoizedState,
-    firstBaseUpdate: null,
-    lastBaseUpdate: null,
-    shared: {
-      pending: null,
-    },
-    effects: null,
-  };
-  fiber.updateQueue = queue;
-}
-
-function markContainerAsRoot(hostRoot, node) {
-  node[internalContainerInstanceKey] = hostRoot;
-}
-
-function unbatchedUpdates(fn, a) {
-  const preExecutionContext = executionContext;
-  executionContext &= ~BatchedContext;
-  executionContext |= LegacyUnbatchedContext;
-  try {
-    return fn(a);
-  } finally {
-    executionContext = preExecutionContext;
-    if (executionContext === NoContext) {
-      // Flush the immediate callbacks that were scheduled during this batch
-      flushSyncCallbackQueue();
-    }
-  }
-}
-
-function updateContainer(element, container, parentComponent, callback) {
-  const current = container.current;
-  const eventTime = requestEventTime();
-
-  console.log(eventTime);
-}
-
-function requestEventTime() {
-  if ((executionContext & (RenderContext | CommitContext)) !== NoContext) {
-    return now();
-  }
-  if (currentEventTime !== -1) {
-    return currentEventTime;
-  }
-  currentEventTime = now();
-  return currentEventTime;
-}
-
-function flushSyncCallbackQueue() {
-  if (immediateQueueCallbackNode !== null) {
-    const node = immediateQueueCallbackNode;
-    immediateQueueCallbackNode = null;
-    Scheduler_cancelCallback(node);
-  }
-  flushSyncCallbackQueueImpl();
-}
-
-function flushSyncCallbackQueueImpl() {
-  if (!isFlushingSyncQueue && syncQueue !== null) {
-    // Prevent re-entrancy.
-    isFlushingSyncQueue = true;
-    let i = 0;
-    try {
-      const isSync = true;
-      const queue = syncQueue;
-      runWithPriority(ImmediatePriority, () => {
-        for (; i < queue.length; i++) {
-          let callback = queue[i];
-          do {
-            callback = callback(isSync);
-          } while (callback !== null);
-        }
-      });
-      syncQueue = null;
-    } catch (error) {
-      // If something throws, leave the remaining callbacks on the queue.
-      if (syncQueue !== null) {
-        syncQueue = syncQueue.slice(i + 1);
-      }
-      // Resume flushing in the next tick
-      Scheduler_scheduleCallback(
-        Scheduler_ImmediatePriority,
-        flushSyncCallbackQueue
-      );
-      throw error;
-    } finally {
-      isFlushingSyncQueue = false;
-    }
-  }
-}
