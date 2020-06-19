@@ -26,40 +26,62 @@ class Main extends Component {
   wrapper = null;
 
   state = {
-    text: "Hello World",
+    h1: "Hello",
+    h2: "React",
   };
 
-  static getDerivedStateFromProps(nextProps, prevState) {
-    // console.log("prevState ->", prevState);
+  // static getDerivedStateFromProps(nextProps, prevState) {
+  //   // console.log("prevState ->", prevState);
+  // }
+
+  componentWillUpdate() {
+    console.log("Main will update");
   }
 
   componentDidMount() {
-    // setTimeout(() => {
-    //   this.setState({ text: "setState" });
-    // }, 1000);
+    setTimeout(() => {
+      this.reverse();
+    }, 1000);
     console.log("did mount", this.wrapper, this.updater);
   }
+
+  reverse = () => {
+    this.setState((state) => ({
+      h1: state.h1.split("").reverse().join(""),
+      h2: state.h2.split("").reverse().join(""),
+    }));
+  };
 
   render() {
     return createElement(
       "div",
-      { className: "wrapper", ref: (ref) => (this.wrapper = ref), key: "main" },
-      createElement("h1", null, this.state.text),
-      createElement("h2", null, "ReactChild"),
-      createElement(H3)
+      {
+        className: "wrapper",
+        ref: (ref) => (this.wrapper = ref),
+        key: "main",
+      },
+      createElement("h1", null, this.state.h1),
+      createElement("h2", null, this.state.h2),
+      createElement("button", { onClick: this.reverse }, "click")
     );
   }
 }
 
-class H3 extends Component {
-  componentDidMount() {
-    console.log("h3 did mount");
-  }
+// class Wrapper extends Component {
+//   componentWillUpdate() {
+//     console.log("Wrapper will update");
+//   }
 
-  render() {
-    return createElement("h3", null, "h3");
-  }
-}
+//   render() {
+//     return createElement(Main, null);
+//   }
+// }
+
+// class Wrapper2 extends Component {
+//   render() {
+//     return createElement(Wrapper, null);
+//   }
+// }
 
 const hasOwnProperty = Object.prototype.hasOwnProperty;
 
@@ -152,5 +174,7 @@ function ReactElement(type, key, ref, self, source, owner, props) {
 }
 
 const element = createElement(Main, null);
+const body = document.querySelector("#body");
 
-render(element, document.querySelector("#body"));
+// createRoot(body).render(element);
+render(element, body);

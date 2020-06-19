@@ -39,7 +39,12 @@ var isSchedulerPaused = false;
 
 const fakeCallbackNode = {};
 
+let yieldInterval = 5;
 let deadline = 0;
+
+let isMessageLoopRunning = false;
+let scheduledHostCallback = null;
+let taskTimeoutID = -1;
 
 let needsPaint = false;
 
@@ -65,7 +70,7 @@ function scheduler_peek(heap) {
 function scheduler_pop(heap) {
   const first = heap[0];
   if (first !== undefined) {
-    const last = heap.scheduler_pop();
+    const last = heap.pop();
     if (last !== first) {
       heap[0] = last;
       siftDown(heap, last, 0);
@@ -137,10 +142,6 @@ function getCurrentTime() {
   return currentEventTime;
 }
 
-function Scheduler_cancelCallback(task) {
-  task.callback = null;
-}
-
 function runWithPriority(priorityLevel, eventHandler) {
   switch (priorityLevel) {
     case ImmediatePriority:
@@ -161,6 +162,65 @@ function runWithPriority(priorityLevel, eventHandler) {
   } finally {
     currentPriorityLevel = previousPriorityLevel;
   }
+}
+
+const performWorkUntilDeadline = () => {
+  if (scheduledHostCallback !== null) {
+    const currentTime = getCurrentTime();
+    // Yield after `yieldInterval` ms, regardless of where we are in the vsync
+    // cycle. This means there's always time remaining at the beginning of
+    // the message event.
+    deadline = currentTime + yieldInterval;
+    const hasTimeRemaining = true;
+    try {
+      const hasMoreWork = scheduledHostCallback(hasTimeRemaining, currentTime);
+      if (!hasMoreWork) {
+        isMessageLoopRunning = false;
+        scheduledHostCallback = null;
+      } else {
+        // If there's more work, schedule the next message event at the end
+        // of the preceding one.
+        port.postMessage(null);
+      }
+    } catch (error) {
+      // If a scheduler task throws, exit the current browser task so the
+      // error can be observed.
+      port.postMessage(null);
+      throw error;
+    }
+  } else {
+    isMessageLoopRunning = false;
+  }
+  // Yielding to the browser will give it a chance to paint, so we can
+  // reset this.
+  needsPaint = false;
+};
+
+const channel = new MessageChannel();
+const port = channel.port2;
+channel.port1.onmessage = performWorkUntilDeadline;
+
+function requestHostCallback(callback) {
+  scheduledHostCallback = callback;
+  if (!isMessageLoopRunning) {
+    isMessageLoopRunning = true;
+    port.postMessage(null);
+  }
+}
+
+function cancelHostCallback() {
+  scheduledHostCallback = null;
+}
+
+function cancelHostTimeout() {
+  clearTimeout(taskTimeoutID);
+  taskTimeoutID = -1;
+}
+
+function requestHostTimeout(callback, ms) {
+  taskTimeoutID = setTimeout(() => {
+    callback(getCurrentTime());
+  }, ms);
 }
 
 function Scheduler_scheduleCallback(priorityLevel, callback, options) {
@@ -233,6 +293,21 @@ function Scheduler_getCurrentPriorityLevel() {
   return currentPriorityLevel;
 }
 
+function Scheduler_cancelCallback(task) {
+  if (enableProfiling) {
+    if (task.isQueued) {
+      const currentTime = getCurrentTime();
+      markTaskCanceled(task, currentTime);
+      task.isQueued = false;
+    }
+  }
+
+  // Null out the callback to indicate the task has been canceled. (Can't
+  // remove from the queue because you can't remove arbitrary nodes from an
+  // array based heap, only the first one.)
+  task.callback = null;
+}
+
 function timeoutForPriorityLevel(priorityLevel) {
   switch (priorityLevel) {
     case ImmediatePriority:
@@ -283,24 +358,6 @@ function _flushCallback() {
   }
 }
 
-function requestHostTimeout(cb, ms) {
-  _timeoutID = setTimeout(cb, ms);
-}
-
-function requestHostCallback(cb) {
-  if (_callback !== null) {
-    // Protect against re-entrancy.
-    setTimeout(requestHostCallback, 0, cb);
-  } else {
-    _callback = cb;
-    setTimeout(_flushCallback, 0);
-  }
-}
-
-function cancelHostTimeout() {
-  clearTimeout(_timeoutID);
-}
-
 function scheduleSyncCallback(callback) {
   // scheduler_push this callback into an internal queue. We'll flush these either in
   // the next tick, or earlier if something calls `flushSyncCallbackQueue`.
@@ -314,7 +371,7 @@ function scheduleSyncCallback(callback) {
   } else {
     // scheduler_push onto existing queue. Don't need to schedule a callback because
     // we already scheduled one when we created the queue.
-    syncQueue.scheduler_push(callback);
+    syncQueue.push(callback);
   }
   return fakeCallbackNode;
 }
@@ -361,10 +418,15 @@ function flushWork(hasTimeRemaining, initialTime) {
   }
 }
 
+function markTaskRun() {}
+
+function markTaskYield() {}
+
 function workLoop(hasTimeRemaining, initialTime) {
   let currentTime = initialTime;
   advanceTimers(currentTime);
   currentTask = scheduler_peek(taskQueue);
+
   while (
     currentTask !== null &&
     !(enableSchedulerDebugging && isSchedulerPaused)
@@ -402,6 +464,7 @@ function workLoop(hasTimeRemaining, initialTime) {
     }
     currentTask = scheduler_peek(taskQueue);
   }
+
   // Return whether there's additional work
   if (currentTask !== null) {
     return true;
@@ -438,6 +501,23 @@ function advanceTimers(currentTime) {
   }
 }
 
-shouldYieldToHost = function () {
+function shouldYieldToHost() {
   return getCurrentTime() >= deadline;
-};
+}
+
+function unstable_shouldYield() {
+  const currentTime = getCurrentTime();
+  advanceTimers(currentTime);
+  const firstTask = scheduler_peek(taskQueue);
+  return (
+    (firstTask !== currentTask &&
+      currentTask !== null &&
+      firstTask !== null &&
+      firstTask.callback !== null &&
+      firstTask.startTime <= currentTime &&
+      firstTask.expirationTime < currentTask.expirationTime) ||
+    shouldYieldToHost()
+  );
+}
+
+const Scheduler_shouldYield = unstable_shouldYield;

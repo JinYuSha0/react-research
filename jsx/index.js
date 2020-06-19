@@ -45,19 +45,8 @@ class Main extends Component {
       "div",
       { className: "wrapper", ref: (ref) => (this.wrapper = ref), key: "main" },
       createElement("h1", null, this.state.text),
-      createElement("h2", null, "ReactChild"),
-      createElement(H3)
+      createElement("h2", null, "ReactChild")
     );
-  }
-}
-
-class H3 extends Component {
-  componentDidMount() {
-    console.log("h3 did mount");
-  }
-
-  render() {
-    return createElement("h3", null, "h3");
   }
 }
 
