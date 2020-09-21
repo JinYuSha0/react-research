@@ -42,7 +42,6 @@ class Main extends Component {
     setTimeout(() => {
       this.reverse();
     }, 1000);
-    console.log("did mount", this.wrapper, this.updater);
   }
 
   reverse = () => {
@@ -67,21 +66,9 @@ class Main extends Component {
   }
 }
 
-// class Wrapper extends Component {
-//   componentWillUpdate() {
-//     console.log("Wrapper will update");
-//   }
-
-//   render() {
-//     return createElement(Main, null);
-//   }
-// }
-
-// class Wrapper2 extends Component {
-//   render() {
-//     return createElement(Wrapper, null);
-//   }
-// }
+function HooksComponent() {
+  useEffect(() => {}, []);
+}
 
 const hasOwnProperty = Object.prototype.hasOwnProperty;
 
@@ -173,8 +160,24 @@ function ReactElement(type, key, ref, self, source, owner, props) {
   return element;
 }
 
-const element = createElement(Main, null);
+const element1 = createElement(function () {
+  useEffect(() => {
+    console.log("did mount");
+  }, []);
+
+  return createElement(
+    "div",
+    {
+      className: "wrapper",
+    },
+    createElement("h1", null, "Hello"),
+    createElement("h2", null, "React")
+  );
+});
+const element2 = createElement(Main);
 const body = document.querySelector("#body");
 
-// createRoot(body).render(element);
-render(element, body);
+// fixme
+// createRoot(body).render(element2);
+
+render(element1, body);
